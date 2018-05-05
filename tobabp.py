@@ -34,12 +34,16 @@ GPIO.setmode(GPIO.BCM)
 GPIO.setup(BUTTON, GPIO.IN)
 GPIO.setup(LED, GPIO.OUT)
 
+# USB key FS label
+USBNAME = "16GB" # 16GB is the name of my thumb drive
+
 ## Some functions
 def mpdConnect(client, con_id):
         """
         Simple wrapper to connect MPD.
         """
         try:
+                client.disconnect()
                 client.connect(**con_id)
         except SocketError:
                 return False
@@ -48,14 +52,19 @@ def mpdConnect(client, con_id):
 def loadMusic(client, con_id, device):
         os.system("mount "+device+" /music/usb")
         os.system("/etc/init.d/mpd stop")
-        os.system("rm /music/mp3/*")
-        os.system("cp /music/usb/* /music/mp3/")
+        os.system("rm /music/mp3/* -R")
+        os.system("cp /music/usb/audiobooks/* /music/mp3/ -R")
+        sleep(2)
         os.system("umount /music/usb")
         os.system("rm /music/mpd/tag_cache")
+        sleep(2)
         os.system("/etc/init.d/mpd start")
         os.system("mpc clear")
+        sleep(10)
         os.system("mpc ls | mpc add")
+        sleep(20)
         os.system("/etc/init.d/mpd restart")
+        sleep(10)
 
 def flashLED(speed, time):
         for x in range(0, time):
@@ -79,10 +88,35 @@ def checkForUSBDevice(name):
                         res = device.device_node
         return res
 
+def getTimes(client):
+        timeEl,timeLe = client.status()["time"].split(":")
+        timeEl = int(timeEl)
+        timeLe = int(timeLe)
+        return timeEl, timeLe
+
+def seekBack(client, time):
+        timeEl, timeLe = getTimes(client)
+        if timeEl > time or int(client.status()["song"]) <= 0:
+                client.seekcur(-time)
+        else:
+                timez = time - timeEl
+                while timez > 0:
+                        client.previous()
+                        timeEl, timeLe = getTimes(client)
+                        if timeLe > timez:
+                                client.seekcur(timeLe - timez)
+                                break
+                        else:
+                                timez = timez - timeLe
+                        if int(client.status()["song"]) <= 0:
+                                break
+
 def main():
         ## MPD object instance
         client = MPDClient()
         mpdConnect(client, CON_ID)
+
+        client.setvol(96)
 
         status = client.status()
         print status
@@ -93,7 +127,7 @@ def main():
         updateLED(client)
 
         while True:
-                device = checkForUSBDevice("1GB") # 1GB is the name of my thumb drive
+                device = checkForUSBDevice(USBNAME)
                 if device != "":
                         # USB thumb drive has been inserted, new music will be copied
                         flashLED(0.1, 5)
@@ -103,22 +137,28 @@ def main():
                         print client.status()
                         flashLED(0.1, 5)
                         # wait until thumb drive is umplugged again
-                        while checkForUSBDevice("1GB") == device:
+                        while checkForUSBDevice(USBNAME) == device:
                                 sleep(1.0)
                         flashLED(0.1, 5)
                 if GPIO.input(BUTTON) == True:
                         if timebuttonisstillpressed == 0:
                                 # button has been pressed, pause or unpause now
-                                if client.status()["state"] == "stop":
-                                        client.play()
-                                else:
-                                        client.pause()
+                                if mpdConnect(client, CON_ID):
+                                        if client.status()["state"] == "stop" or client.status()["state"] == "pause":
+                                                seekBack(client, 30)
+                                                print "play"
+                                                client.play()
+                                        else:
+                                                print "pause"
+                                                client.pause()
                                 updateLED(client)
+                                print client.status()
                         elif timebuttonisstillpressed > 4:
                                 # go back one track if button is pressed > 4 secs
-                                client.previous()
+                                seekBack(client,10 * 60)
                                 flashLED(0.1, 5)
                                 timebuttonisstillpressed = 0
+                                print client.status()
                         timebuttonisstillpressed = timebuttonisstillpressed + 0.1
                 else:
                         timebuttonisstillpressed = 0
