@@ -89,9 +89,13 @@ def checkForUSBDevice(name):
         return res
 
 def getTimes(client):
-        timeEl,timeLe = client.status()["time"].split(":")
-        timeEl = int(timeEl)
-        timeLe = int(timeLe)
+        try:
+                timeEl,timeLe = client.status()["time"].split(":")
+                timeEl = int(timeEl)
+                timeLe = int(timeLe)
+        except Exception as e:
+                timeEl = 0
+                timeLe = 0
         return timeEl, timeLe
 
 def seekBack(client, time):
@@ -144,8 +148,11 @@ def main():
                         if timebuttonisstillpressed == 0:
                                 # button has been pressed, pause or unpause now
                                 if mpdConnect(client, CON_ID):
-                                        if client.status()["state"] == "stop" or client.status()["state"] == "pause":
+                                        if client.status()["state"] == "pause":
                                                 seekBack(client, 30)
+                                                print "play"
+                                                client.play()
+                                        elif client.status()["state"] == "stop":
                                                 print "play"
                                                 client.play()
                                         else:
